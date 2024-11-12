@@ -1,0 +1,7 @@
+# 忽略所有层级的
+**/__pycache__/
+
+# 忽略主目录下的
+/samples/
+/experiments/
+/others/
