@@ -135,9 +135,9 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
         text_inputs_embeds = self.model.embed_tokens(input_ids)
         
         with torch.no_grad():
-            encoder_outputs = self.codec.encode(audio_inputs["input_values"].to(self.model.dtype), audio_inputs["padding_mask"], bandwidth=6) #1,b,r,t, 1 due to one chunk
-            speech_inputs_embeds = self.codec.quantizer.decode(encoder_outputs.audio_codes[0].transpose(0, 1)) #b,d,t
-            #speech_inputs_embeds = self.codec.encode(audio_inputs["input_values"].to(self.model.dtype)).sample()  #b,d,t
+            #encoder_outputs = self.codec.encode(audio_inputs["input_values"].to(self.model.dtype), audio_inputs["padding_mask"], bandwidth=6) #1,b,r,t, 1 due to one chunk
+            #speech_inputs_embeds = self.codec.quantizer.decode(encoder_outputs.audio_codes[0].transpose(0, 1)) #b,d,t
+            speech_inputs_embeds = self.codec.encode(audio_inputs["input_values"].to(self.model.dtype)).sample()  #b,d,t
             
             speech_attention_mask = audio_inputs["padding_mask"][..., ::320]
             assert speech_inputs_embeds.size(-1) == speech_attention_mask.size(-1)

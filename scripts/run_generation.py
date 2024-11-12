@@ -7,7 +7,7 @@ import torch
 from accelerate.utils import set_seed
 
 from transformers import AutoTokenizer
-from speechllama.speech_llama_score import SpeechLlamaForCausalLM
+from speechllama.speech_llama import SpeechLlamaForCausalLM
 
 import pdb
 
@@ -46,7 +46,8 @@ def main():
         required=True,
     )
 
-    parser.add_argument("--input", type=str, default="")
+    parser.add_argument("--input", type=str, default="Nice to meet you.")
+    parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--max_length", type=int, default=0)
 
     parser.add_argument(
@@ -121,9 +122,14 @@ def main():
     new_embeds = model.codec.quantizer.decode(codes).transpose(-1,-2)
     '''
     new_audio_values = model.codec.decoder(new_embeds.transpose(-1,-2))
-
     
-    torchaudio.save("samples/zzzz.wav", new_audio_values[0].cpu(), SAMPLING_RATE)
+    # 假设有一个文件路径和文件名
+    
+    filename = args.output + ".wav" if args.output else "output.wav"
+
+    output_path = Path("samples") / filename
+    
+    torchaudio.save(output_path, new_audio_values[0].cpu(), SAMPLING_RATE)
 
     return
 

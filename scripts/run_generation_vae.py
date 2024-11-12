@@ -7,7 +7,7 @@ import torch
 from accelerate.utils import set_seed
 
 from transformers import AutoTokenizer
-from speechllama.speech_llama_score import SpeechLlamaForCausalLM
+from speechllama.speech_llama import SpeechLlamaForCausalLM
 
 import pdb
 
@@ -46,7 +46,8 @@ def main():
         required=True,
     )
 
-    parser.add_argument("--input", type=str, default="")
+    parser.add_argument("--input", type=str, default="Nice to meet you.")
+    parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--max_length", type=int, default=0)
 
     parser.add_argument(
@@ -109,7 +110,7 @@ def main():
     mean = torch.load(mean_path).to(torch_dtype).to(device)
     std = torch.load(std_path).to(torch_dtype).to(device)
     
-    new_embeds = output_sequences[1] #* std + mean
+    new_embeds = output_sequences[1] * std + mean
     
     #temp = mean.expand(new_embeds.size(0),new_embeds.size(1),-1)
     #print(temp.size())
@@ -121,9 +122,12 @@ def main():
     new_embeds = model.codec.quantizer.decode(codes).transpose(-1,-2)
     '''
     new_audio_values = model.codec.decoder(new_embeds.transpose(-1,-2))
-
     
-    torchaudio.save("sample.wav", new_audio_values[0].cpu(), SAMPLING_RATE)
+    filename = args.output + ".wav" if args.output else "output.wav"
+
+    output_path = Path("samples") / filename
+    
+    torchaudio.save(output_path, new_audio_values[0].cpu(), SAMPLING_RATE)
 
     return
 

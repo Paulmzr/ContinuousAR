@@ -2,6 +2,7 @@
 **/__pycache__/
 
 # 忽略主目录下的
+/samples_old/
 /samples/
 /experiments/
 /others/

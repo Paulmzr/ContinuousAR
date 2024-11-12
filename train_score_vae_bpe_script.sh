@@ -1,5 +1,5 @@
 #export OMP_NUM_THREADS=20
-EXP_NAME=vae.score_condnv.bpe.12+12_layers.bsz_64
+EXP_NAME=score.vae.bpe.normalize.12+12_layers.bsz_64
 
 OUTPUT_DIR=./experiments/${EXP_NAME}
 mkdir -p $OUTPUT_DIR
