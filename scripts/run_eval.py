@@ -80,7 +80,7 @@ def main():
     model = SpeechLlamaForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=torch_dtype)
     model.initialize_vae_codec("/data/mazhengrui/codec/descript-audio-codec/runs/vae-2/200k/vae/weights.pth")
     model.to(device)
-    model.initialize_scale("/data/mazhengrui/SpeechLLaMA/vae_scale/scale_10k")
+    model.initialize_scale("/data/mazhengrui/SpeechLLaMA/scale_vae/scale_10k")
     
     assert tokenizer.pad_token is not None
     logger.info(f"tokenizer pad token: {tokenizer.pad_token}")

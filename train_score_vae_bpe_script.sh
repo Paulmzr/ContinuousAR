@@ -1,13 +1,12 @@
 #export OMP_NUM_THREADS=20
-EXP_NAME=vae_pred_noise.normalize.linear.sigma_fixed_small.12+12_layers.bsz_64
+EXP_NAME=vae.score_condnv.bpe.12+12_layers.bsz_64
 
 OUTPUT_DIR=./experiments/${EXP_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=./experiments/${EXP_NAME}/log
 
-torchrun --nproc_per_node 2 --nnodes 1 scripts/train_vae.py \
+torchrun --nproc_per_node 2 --nnodes 1 --master_port 29501 scripts/train_score_vae_bpe.py \
     --num_hidden_layers 12 --diffloss_d 12 \
-    --learn_sigma False --sigma_small True \
     --eval_split "dev.clean" \
     --preprocessing_num_workers 8 \
     --dataloader_num_workers 8 \
@@ -31,7 +30,7 @@ torchrun --nproc_per_node 2 --nnodes 1 scripts/train_vae.py \
     --adam_beta2 0.95 \
     --adam_epsilon 1e-8 \
     --max_grad_norm 1.0 \
-    --max_steps 150000 \
+    --max_steps 200000 \
     --lr_scheduler_type "linear" \
     --warmup_steps 10000 \
     --logging_first_step \

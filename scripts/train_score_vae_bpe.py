@@ -42,13 +42,13 @@ from transformers import AutoProcessor, AutoTokenizer, RobertaTokenizer
 
 from speechllama.speech_llama_score import SpeechLlamaConfig, SpeechLlamaForCausalLM
 from speechllama.trainer import SpeechLlamaTrainer
-
+from dac.model.feature_extraction_vae import DacFeatureExtractor
 
 logger = logging.getLogger(__name__)
 
 
 
-SAMPLING_RATE=24000
+SAMPLING_RATE=16000
     
 
 @dataclass
@@ -78,7 +78,7 @@ class ArchArguments:
     
     # --------------------------------------------------------------------------
     # Score Arguments
-    vae_embed_dim: int = 128
+    vae_embed_dim: int = 32
     diffloss_d: int = 3
     diffloss_w: int = 1024
 
@@ -88,9 +88,9 @@ class ArchArguments:
 class ModelArguments:
     # --------------------------------------------------------------------------
     # Codec & Tokenizer Arguments
-    codec: str = "facebook/encodec_24khz"
+    codec: str = "/data/mazhengrui/codec/descript-audio-codec/runs/vae-2/200k/vae/weights.pth"
     tokenizer: str = "/data/mazhengrui/SpeechLLaMA/bpe_tokenizer_libritts"
-    scale:str = "/data/mazhengrui/SpeechLLaMA/scale_encodec/scale_10k"
+    scale:str = "/data/mazhengrui/SpeechLLaMA/scale_vae/scale_10k"
     
     '''
     # --------------------------------------------------------------------------
@@ -285,7 +285,15 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
         tokenized_eval_dataset = tokenized_eval_dataset.filter(filter_function)
         logger.info(f"filtered eval dataset: {len(tokenized_eval_dataset)} samples.")
     
-    processor = AutoProcessor.from_pretrained(model_args.codec)
+    #processor = AutoProcessor.from_pretrained(model_args.codec)
+    processor = DacFeatureExtractor(
+        feature_size=1,
+        sampling_rate=SAMPLING_RATE,
+        padding_value=0.0,
+        hop_length=320,
+        padding_side="right",
+        return_attention_mask=True,
+    )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, processor=processor, pad_to_multiple_of=data_args.pad_to_multiple_of)
     
     return tokenized_train_dataset, tokenized_eval_dataset, data_collator
@@ -364,7 +372,7 @@ def train(attn_implementation="flash_attention_2"):
     torch_dtype = torch.bfloat16 if training_args.bf16 else (torch.float16 if training_args.fp16 else None)
     
     model = SpeechLlamaForCausalLM._from_config(model_config, attn_implementation=attn_implementation, torch_dtype=torch_dtype)
-    model.initialize_codec(model_args)
+    model.initialize_vae_codec(model_args)
     model.initialize_scale(model_args)  
     
     n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())

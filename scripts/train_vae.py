@@ -96,7 +96,7 @@ class ModelArguments:
     # Codec & Tokenizer Arguments
     codec: str = "/data/mazhengrui/codec/descript-audio-codec/runs/vae-2/200k/vae/weights.pth"
     tokenizer: str = "/data/SharedResources/models/LLM/Llama-2-7b"
-    scale:str = "/data/mazhengrui/SpeechLLaMA/vae_scale/scale_10k"
+    scale:str = "/data/mazhengrui/SpeechLLaMA/scale_vae/scale_10k"
     
     '''
     # --------------------------------------------------------------------------

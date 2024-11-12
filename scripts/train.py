@@ -96,7 +96,7 @@ class ModelArguments:
     # Codec & Tokenizer Arguments
     codec: str = "facebook/encodec_24khz"
     tokenizer: str = "/data/SharedResources/models/LLM/Llama-2-7b"
-    scale:str = "/data/mazhengrui/SpeechLLaMA/scale"
+    scale:str = "/data/mazhengrui/SpeechLLaMA/scale_encodec/scale_10k"
     
     '''
     # --------------------------------------------------------------------------

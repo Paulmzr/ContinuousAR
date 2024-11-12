@@ -5,7 +5,7 @@ OUTPUT_DIR=./experiments/${EXP_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=./experiments/${EXP_NAME}/log
 
-torchrun --nproc_per_node 4 --nnodes 1 --master_port 29501 train_score_vae.py \
+torchrun --nproc_per_node 4 --nnodes 1 --master_port 29501 scripts/train_score_vae.py \
     --num_hidden_layers 12 --diffloss_d 3 \
     --eval_split "dev.clean" \
     --preprocessing_num_workers 8 \

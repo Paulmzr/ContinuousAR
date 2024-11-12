@@ -103,7 +103,7 @@ def main():
     )
     
     
-    directory = Path("/data/mazhengrui/SpeechLLaMA/vae_scale/scale_10k")
+    directory = Path("/data/mazhengrui/SpeechLLaMA/scale_vae/scale_10k")
     mean_path = directory / "mean.pt"
     std_path = directory / "std.pt"
     mean = torch.load(mean_path).to(torch_dtype).to(device)

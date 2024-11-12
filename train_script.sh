@@ -5,7 +5,7 @@ OUTPUT_DIR=./experiments/${EXP_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=./experiments/${EXP_NAME}/log
 
-torchrun --nproc_per_node 2 --nnodes 1 train.py \
+torchrun --nproc_per_node 2 --nnodes 1 scripts/train.py \
     --num_hidden_layers 12 --diffloss_d 12 \
     --learn_sigma False --sigma_small True \
     --eval_split "dev.clean" \
