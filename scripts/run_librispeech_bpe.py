@@ -46,8 +46,9 @@ def main():
         required=True,
     )
 
-    parser.add_argument("--input", type=str, default="Nice to meet you.")
+    parser.add_argument("--input", type=str, default="IT WAS SILENT AND GLOOMY BEING TENANTED SOLELY BY THE CAPTIVE AND LIGHTED BY THE DYING EMBERS OF A FIRE WHICH HAD BEEN USED FOR THE PURPOSED OF COOKERY")
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--max_length", type=int, default=0)
 
     parser.add_argument(
@@ -55,6 +56,11 @@ def main():
         type=float,
         default=1.0,
         help="temperature of 1.0 has no effect, lower tend toward greedy sampling",
+    )
+    parser.add_argument(
+        "--cfg",
+        type=float,
+        default=1.0,
     )
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
     parser.add_argument("--num_return_sequences", type=int, default=1, help="The number of samples to generate.")
@@ -79,6 +85,7 @@ def main():
     tokenizer = RobertaTokenizer.from_pretrained(args.model_name_or_path)
 
     model = SpeechLlamaForCausalLM.from_pretrained(args.model_name_or_path, torch_dtype=torch_dtype)
+    model.infer_cfg = args.cfg
     model.initialize_codec("facebook/encodec_24khz") 
     model.to(device)
     
@@ -93,7 +100,7 @@ def main():
     
     input_text = args.input if args.input else input("Model input >>> ")    
     input_ids = tokenizer.encode(input_text, return_tensors='pt').to(device)
-    
+
     
     output_sequences = model.generate(
         input_ids=input_ids,
@@ -104,7 +111,7 @@ def main():
     )
     
     
-    directory = Path("/data/mazhengrui/SpeechLLaMA/scale_encodec/scale_10k")
+    directory = Path("/data/mazhengrui/SpeechLLaMA/scale_encodec/librispeech/scale_10k")
     mean_path = directory / "mean.pt"
     std_path = directory / "std.pt"
     mean = torch.load(mean_path).to(torch_dtype).to(device)
@@ -124,7 +131,7 @@ def main():
     new_audio_values = model.codec.decoder(new_embeds.transpose(-1,-2))
 
     
-    filename = args.output + ".wav" if args.output else "output.wav"
+    filename = args.output + f".{args.ckpt}.cfg_{args.cfg}.wav" if args.output else "output.wav"
 
     output_path = Path("samples") / filename
     

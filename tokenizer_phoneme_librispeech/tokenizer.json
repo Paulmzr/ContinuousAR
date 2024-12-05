@@ -1,0 +1,185 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "<s>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 1,
+      "content": "<pad>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 2,
+      "content": "</s>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 3,
+      "content": "<unk>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "Whitespace"
+  },
+  "post_processor": {
+    "type": "TemplateProcessing",
+    "single": [
+      {
+        "SpecialToken": {
+          "id": "<s>",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "SpecialToken": {
+          "id": "</s>",
+          "type_id": 0
+        }
+      }
+    ],
+    "pair": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "B",
+          "type_id": 1
+        }
+      }
+    ],
+    "special_tokens": {
+      "</s>": {
+        "id": "</s>",
+        "ids": [
+          2
+        ],
+        "tokens": [
+          "</s>"
+        ]
+      },
+      "<s>": {
+        "id": "<s>",
+        "ids": [
+          0
+        ],
+        "tokens": [
+          "<s>"
+        ]
+      }
+    }
+  },
+  "decoder": null,
+  "model": {
+    "type": "WordLevel",
+    "vocab": {
+      "<s>": 0,
+      "<pad>": 1,
+      "</s>": 2,
+      "<unk>": 3,
+      "DH": 4,
+      "AH0": 5,
+      "_": 6,
+      "AO1": 7,
+      "R": 8,
+      "D": 9,
+      "N": 10,
+      "EH2": 11,
+      "IY0": 12,
+      "UW1": 13,
+      "T": 14,
+      "Z": 15,
+      "AH1": 16,
+      "V": 17,
+      "L": 18,
+      "AY1": 19,
+      "F": 20,
+      "M": 21,
+      "IH1": 22,
+      "S": 23,
+      "ER0": 24,
+      "EY1": 25,
+      "AE1": 26,
+      "NG": 27,
+      "K": 28,
+      "SH": 29,
+      "IH0": 30,
+      "ER1": 31,
+      "OW1": 32,
+      "HH": 33,
+      "CH": 34,
+      "W": 35,
+      "B": 36,
+      "P": 37,
+      "UH1": 38,
+      "AA1": 39,
+      "AW1": 40,
+      "EH1": 41,
+      "IY1": 42,
+      "IH2": 43,
+      "Y": 44,
+      "TH": 45,
+      "G": 46,
+      "JH": 47,
+      "EH0": 48,
+      "UW0": 49,
+      "EY2": 50,
+      "ZH": 51,
+      "OW0": 52,
+      "OY1": 53,
+      "AA2": 54,
+      "OW2": 55,
+      "AA0": 56,
+      "AO0": 57,
+      "AE2": 58,
+      "AY0": 59,
+      "AH2": 60,
+      "IY2": 61,
+      "AY2": 62,
+      "UH2": 63,
+      "AO2": 64,
+      "AE0": 65,
+      "AW2": 66,
+      "UW2": 67,
+      "AW0": 68,
+      "UH0": 69,
+      "EY0": 70,
+      "ER2": 71,
+      "OY0": 72,
+      "OY2": 73
+    },
+    "unk_token": "<unk>"
+  }
+}

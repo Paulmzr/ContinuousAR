@@ -4,16 +4,19 @@ import torch
 import torch.nn as nn
 
 from transformers import EncodecModel
-from .modeling_llama_with_dropout import LlamaConfig, LlamaModel, LlamaForCausalLM
-from .modeling_llama_with_dropout import _prepare_4d_causal_attention_mask_with_cache_position
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaModel, LlamaForCausalLM
+from transformers.models.llama.modeling_llama import _prepare_4d_causal_attention_mask_with_cache_position
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateDecoderOnlyOutput
-from transformers.utils.import_utils import is_torchdynamo_compiling
 
 from .scoreloss_cond import ScoreLossZ
 import dac
-import copy
+
+from omegaconf import DictConfig
+from matcha.models.components.flow_matching import CFM
+
+
 
 
 class ModifiedGenerateDecoderOnlyOutput(GenerateDecoderOnlyOutput):
@@ -29,13 +32,11 @@ class SpeechLlamaConfig(LlamaConfig):
         vae_embed_dim=128,
         diffloss_d=3,
         diffloss_w=1024,
-        training_cfg=0.0,
         **kwargs,
     ):
         self.vae_embed_dim = vae_embed_dim
         self.diffloss_d = diffloss_d
         self.diffloss_w = diffloss_w
-        self.training_cfg = training_cfg
         
         super().__init__(**kwargs)
     
@@ -60,16 +61,20 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
         self.eos_head = nn.Linear(self.hidden_size, 1, bias=False)
         self.embed_mean = None
         self.embed_std = None
-        self.training_cfg = config.training_cfg
 
         # --------------------------------------------------------------------------
-        # Score Loss
-        self.scoreloss = ScoreLossZ(
-            target_channels=self.token_embed_dim,
-            z_channels=self.hidden_size,
-            width=config.diffloss_w,
-            depth=config.diffloss_d, 
-        )
+        # Flow matching
+        cfm_params = DictConfig({
+                        'sigma_min': 1e-06,
+                        'solver': 'euler',
+                        't_scheduler': 'cosine',
+                        'training_cfg_rate': 0.2,
+                        'inference_cfg_rate': 0.7,
+                        'reg_loss_type': 'l1'
+                    })
+        estimator = 
+        
+        self.decoder = CFM(in_channels=self.hidden_size, cfm_params=cfm_params, n_spks=1, estimator=estimator)
         
         # --------------------------------------------------------------------------
         # BCE Loss
@@ -135,12 +140,6 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
         past_key_values,
         audio_inputs,
     ):
-        if self.training_cfg > 0.0:
-            bsz = attention_mask.size(0)
-            random_mask = torch.rand(bsz) < self.training_cfg
-            cfg_mask = torch.zeros_like(attention_mask, dtype=torch.bool)
-            cfg_mask[:, :-1] = random_mask[:, None]  # 只修改每行的前 T-1 列
-            attention_mask[cfg_mask] = 0
         
         text_inputs_embeds = self.model.embed_tokens(input_ids)
         
@@ -198,13 +197,11 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
                 audio_inputs,
             )
         else:
-            assert not ((input_ids is None) and (inputs_embeds is None))
-            if input_ids is not None and inputs_embeds is None:
+            assert not ((input_ids is not None) and (inputs_embeds is not None))
+            if input_ids is not None:
                 inputs_embeds = self.model.embed_tokens(input_ids)
-            elif input_ids is None and inputs_embeds is not None:
-                inputs_embeds = self.z_proj(inputs_embeds)
             else:
-                inputs_embeds = torch.cat([self.model.embed_tokens(input_ids), self.z_proj(inputs_embeds)], dim=1)
+                inputs_embeds = self.z_proj(inputs_embeds)
             
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -299,19 +296,54 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
         num_logits_to_keep=None,
         **kwargs,
     ):
-        if cache_position[0] == 0:
+        if inputs_embeds is None:
+            # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
+            # Exception 1: when passing inputs_embeds, input_ids may be missing entries
+            # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
+            if past_key_values is not None:
+                if inputs_embeds is not None:  # Exception 1
+                    input_ids = input_ids[:, -cache_position.shape[0] :]
+                elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
+                    input_ids = input_ids[:, cache_position]
+
             if attention_mask is not None and position_ids is None:
                 # create position_ids on the fly for batch generation
                 position_ids = attention_mask.long().cumsum(-1) - 1
                 position_ids.masked_fill_(attention_mask == 0, 1)
+                if past_key_values:
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
 
-            if inputs_embeds is not None:
-                model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": inputs_embeds}
+                    # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                    position_ids = position_ids.clone(memory_format=torch.contiguous_format)
+
+            # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+            if inputs_embeds is not None and cache_position[0] == 0:
+                model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
             else:
+                # The clone here is for the same reason as for `position_ids`.
                 model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
             if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-                raise NotImplementedError
+                if model_inputs["inputs_embeds"] is not None:
+                    batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
+                    device = model_inputs["inputs_embeds"].device
+                else:
+                    batch_size, sequence_length = model_inputs["input_ids"].shape
+                    device = model_inputs["input_ids"].device
+
+                dtype = self.lm_head.weight.dtype
+                min_dtype = torch.finfo(dtype).min
+
+                attention_mask = _prepare_4d_causal_attention_mask_with_cache_position(
+                    attention_mask,
+                    sequence_length=sequence_length,
+                    target_length=past_key_values.get_max_length(),
+                    dtype=dtype,
+                    device=device,
+                    min_dtype=min_dtype,
+                    cache_position=cache_position,
+                    batch_size=batch_size,
+                )
 
             if num_logits_to_keep is not None:
                 model_inputs["num_logits_to_keep"] = num_logits_to_keep
@@ -327,20 +359,48 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
             )
         else:
             if past_key_values is not None:
+                input_ids = input_ids[:, -cache_position.shape[0] :]
                 inputs_embeds = inputs_embeds[:, -cache_position.shape[0] :, :]
                 
-            if attention_mask is not None and position_ids is None:
+
+            if attention_mask is not None and position_ids is None: #TODO: Why position_ids is None in the 2nd generation?
                 # create position_ids on the fly for batch generation
                 position_ids = attention_mask.long().cumsum(-1) - 1
                 position_ids.masked_fill_(attention_mask == 0, 1)
                 if past_key_values:
-                    position_ids = position_ids[:, -inputs_embeds.shape[1] :]
+                    position_ids = position_ids[:, -input_ids.shape[1] :]
+
+                    # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
                     position_ids = position_ids.clone(memory_format=torch.contiguous_format)
 
-            model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
+            # if `inputs_embeds` are passed, we only want to use inputs_embeds
+            if inputs_embeds is not None:
+                model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
+            else:
+                # The clone here is for the same reason as for `position_ids`.
+                model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
 
             if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-                raise NotImplementedError
+                if model_inputs["inputs_embeds"] is not None:
+                    batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
+                    device = model_inputs["inputs_embeds"].device
+                else:
+                    batch_size, sequence_length = model_inputs["input_ids"].shape
+                    device = model_inputs["input_ids"].device
+
+                dtype = self.lm_head.weight.dtype
+                min_dtype = torch.finfo(dtype).min
+
+                attention_mask = _prepare_4d_causal_attention_mask_with_cache_position(
+                    attention_mask,
+                    sequence_length=sequence_length,
+                    target_length=past_key_values.get_max_length(),
+                    dtype=dtype,
+                    device=device,
+                    min_dtype=min_dtype,
+                    cache_position=cache_position,
+                    batch_size=batch_size,
+                )
 
             if num_logits_to_keep is not None:
                 model_inputs["num_logits_to_keep"] = num_logits_to_keep
@@ -356,108 +416,6 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
             )
             
         return model_inputs
-    
-    
-    def prepare_inputs_for_generation_cfg(
-        self,
-        input_ids,
-        inputs_embeds=None,
-        past_key_values=None,
-        attention_mask=None,
-        cache_position=None,
-        position_ids=None,
-        use_cache=True,
-        num_logits_to_keep=None,
-        **kwargs,
-    ):
-        attention_mask = attention_mask.clone()
-        attention_mask[:, :self.prompt_length-1] = 0
-        
-        if cache_position[0] == 0:
-            if attention_mask is not None and position_ids is None:
-                # create position_ids on the fly for batch generation
-                position_ids = attention_mask.long().cumsum(-1) - 1
-                position_ids.masked_fill_(attention_mask == 0, 1)
-
-            if inputs_embeds is not None:
-                model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": inputs_embeds}
-            else:
-                model_inputs = {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
-
-            if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-                raise NotImplementedError
-
-            if num_logits_to_keep is not None:
-                model_inputs["num_logits_to_keep"] = num_logits_to_keep
-
-            model_inputs.update(
-                {
-                    "position_ids": position_ids,
-                    "cache_position": cache_position,
-                    "past_key_values": copy.deepcopy(past_key_values),
-                    "use_cache": use_cache,
-                    "attention_mask": attention_mask,
-                }
-            )
-        else:
-            if past_key_values is not None:
-                inputs_embeds = inputs_embeds[:, -cache_position.shape[0] :, :]
-                
-            if attention_mask is not None and position_ids is None:
-                # create position_ids on the fly for batch generation
-                position_ids = attention_mask.long().cumsum(-1) - 1
-                position_ids.masked_fill_(attention_mask == 0, 1)
-                if past_key_values:
-                    position_ids = position_ids[:, -inputs_embeds.shape[1] :]
-                    position_ids = position_ids.clone(memory_format=torch.contiguous_format)
-
-            model_inputs = {"inputs_embeds": inputs_embeds, "input_ids": None}
-
-            if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
-                raise NotImplementedError
-
-            if num_logits_to_keep is not None:
-                model_inputs["num_logits_to_keep"] = num_logits_to_keep
-
-            model_inputs.update(
-                {
-                    "position_ids": position_ids,
-                    "cache_position": cache_position,
-                    "past_key_values":copy.deepcopy(past_key_values),
-                    "use_cache": use_cache,
-                    "attention_mask": attention_mask,
-                }
-            )
-            
-        return model_inputs
-    
-    
-    
-    def _get_initial_cache_position(self, input_ids, model_kwargs):
-        """Calculates `cache_position` for the pre-fill stage based on `input_ids` and optionally past length"""
-        # `torch.compile`-friendly `torch.arange` from a shape -- the lines below are equivalent to `torch.arange`
-        if "inputs_embeds" in model_kwargs:
-            #cache_position = torch.ones_like(model_kwargs["inputs_embeds"][0, :, 0], dtype=torch.int64).cumsum(0) - 1
-            cache_position = (torch.ones(model_kwargs["inputs_embeds"].shape[1] + input_ids.shape[1], dtype=torch.int64).cumsum(0) - 1).to(model_kwargs["inputs_embeds"].device)
-        else:
-            cache_position = torch.ones_like(input_ids[0, :], dtype=torch.int64).cumsum(0) - 1
-
-        past_length = 0
-        if model_kwargs.get("past_key_values") is not None:
-            cache = model_kwargs["past_key_values"]
-            past_length = 0
-            if not isinstance(cache, Cache):
-                past_length = cache[0][0].shape[2]
-            elif hasattr(cache, "get_seq_length") and cache.get_seq_length() is not None:
-                past_length = cache.get_seq_length()
-
-            # TODO(joao): this is not torch.compile-friendly, find a work-around. If the cache is not empty,
-            # end-to-end compilation will yield bad results because `cache_position` will be incorrect.
-            if not is_torchdynamo_compiling():
-                cache_position = cache_position[past_length:]
-
-        model_kwargs["cache_position"] = cache_position
-        return model_kwargs
     
     
     def _sample(
@@ -519,22 +477,19 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
         decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
 
         
-        inputs_embeds = model_kwargs.get("inputs_embeds", None)
+
         # keep track of which sequences are already finished
-        batch_size, cur_len = input_ids.shape if inputs_embeds is None else (input_ids.shape[0], input_ids.shape[1] + inputs_embeds.shape[1])
+        batch_size, cur_len = input_ids.shape
         this_peer_finished = False
         unfinished_sequences = torch.ones(batch_size, dtype=torch.long, device=input_ids.device)
         model_kwargs = self._get_initial_cache_position(input_ids, model_kwargs)
-        model_kwargs.pop("inputs_embeds", None)
-        self.prompt_length = input_ids.shape[1] if inputs_embeds is None else input_ids.shape[1] + inputs_embeds.shape[1]
+        inputs_embeds = None  # Right now, only support input_ids as init input
 
         while self._has_unfinished_sequences(
             this_peer_finished, synced_gpus, device=input_ids.device, cur_len=cur_len, max_length=max_length
         ):
             # prepare model inputs
             model_inputs = self.prepare_inputs_for_generation(input_ids, inputs_embeds, **model_kwargs)
-            if self.infer_cfg != 1.0:
-                model_inputs_cfg = self.prepare_inputs_for_generation_cfg(input_ids, inputs_embeds, **model_kwargs)
 
             # prepare variable output controls (note: some models won't accept all output controls)
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
@@ -542,9 +497,6 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
 
             # forward pass to get next token
             outputs = self(**model_inputs, return_dict=True)
-            if self.infer_cfg != 1.0:
-                outputs_cfg = self(**model_inputs_cfg, return_dict=True)
-                del model_inputs_cfg["past_key_values"]
 
             if synced_gpus and this_peer_finished:
                 continue  # don't waste resources running the code we don't need
@@ -552,10 +504,7 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
             # Clone is needed to avoid keeping a hanging ref to outputs.logits which may be very large for first iteration
             # (the clone itself is always small)
             next_token_logits = outputs.logits.clone()[:, -1, :].float()
-            eos_next_token_logits = next_token_logits
-            if self.infer_cfg != 1.0:
-                next_token_logits_cfg = outputs_cfg.logits.clone()[:, -1, :].float()
-                next_token_logits = next_token_logits_cfg + self.infer_cfg * (next_token_logits - next_token_logits_cfg)
+            
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
                 if output_logits:
@@ -578,7 +527,7 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
             if do_sample:
                 next_embeds = self.scoreloss.sample(next_token_logits, temperature=1.0) # bsz, dim
 
-                next_actions = torch.sigmoid(self.eos_head(eos_next_token_logits)) >= 0.8 # 0: continue, 1: stop
+                next_actions = torch.sigmoid(self.eos_head(next_token_logits)) >= 0.8 # 0: continue, 1: stop
                 next_tokens = torch.where(next_actions == 0, bos_token_id, eos_token_id)
 
 
@@ -588,7 +537,7 @@ class SpeechLlamaForCausalLM(LlamaForCausalLM):
             
             # finished sentences should have their next token be a padding token
             if has_eos_stopping_criteria:
-                next_tokens = next_tokens * unfinished_sequences.unsqueeze(1) + pad_token_id * (1 - unfinished_sequences.unsqueeze(1))
+                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # update generated ids, model inputs, and length for next stepW
             if inputs_embeds is not None:

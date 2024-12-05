@@ -56,7 +56,7 @@ class ArchArguments:
     # --------------------------------------------------------------------------
     # Llama Arguments
     hidden_size: int = 1024
-    intermediate_size: int = 4096
+    intermediate_size: int = 2752
     num_hidden_layers: int = 12
     num_attention_heads: int = 16
     num_key_value_heads: Optional[int] = None
@@ -66,7 +66,7 @@ class ArchArguments:
     rms_norm_eps: float = 1e-6
     use_cache: bool = True
     pad_token_id: Optional[int] = None
-    bos_token_id: int = 1
+    bos_token_id: int = 0
     eos_token_id: int = 2
     pretraining_tp: int = 1
     tie_word_embeddings: bool = False
@@ -75,12 +75,16 @@ class ArchArguments:
     attention_bias: bool = False
     attention_dropout: float = 0.1
     mlp_bias: bool = False
+    vocab_size: int = 32000
+    dropout: float = 0.1
+    activation_dropout: float = 0.1
     
     # --------------------------------------------------------------------------
     # Score Arguments
     vae_embed_dim: int = 128
     diffloss_d: int = 3
     diffloss_w: int = 1024
+    training_cfg: float = 0.0
 
 
 
@@ -89,7 +93,7 @@ class ModelArguments:
     # --------------------------------------------------------------------------
     # Codec & Tokenizer Arguments
     codec: str = "facebook/encodec_24khz"
-    tokenizer: str = "/data/mazhengrui/SpeechLLaMA/bpe_tokenizer_libritts"
+    tokenizer: str = "/data/mazhengrui/SpeechLLaMA/tokenizer_bpe_libritts"
     scale:str = "/data/mazhengrui/SpeechLLaMA/scale_encodec/scale_10k"
     
     '''
