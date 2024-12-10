@@ -362,8 +362,8 @@ def train(attn_implementation="flash_attention_2"):
     model_config = SpeechLlamaConfig(**asdict(arch_args))
     logger.info(f"config: {model_config}")
     
-    
-    torch_dtype = torch.bfloat16 if training_args.bf16 else (torch.float16 if training_args.fp16 else None)
+    torch_dtype= torch.bfloat16 if training_args.bf16 else None
+    #torch_dtype = torch.bfloat16 if training_args.bf16 else (torch.float16 if training_args.fp16 else None)
     
     model = SpeechLlamaForCausalLM._from_config(model_config, attn_implementation=attn_implementation, torch_dtype=torch_dtype)
     model.initialize_codec(model_args)

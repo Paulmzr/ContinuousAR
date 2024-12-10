@@ -1,12 +1,12 @@
 #export OMP_NUM_THREADS=20
-EXP_NAME=librispeech.score.pho.normalize.ffn_2752.12+12_layers.dropout_0.1.act_dropout_0.1.bsz_128
+EXP_NAME=librispeech.score.pho.normalize.ffn_2752.12+3_layers.dropout_0.1.act_dropout_0.1.bsz_128
 
 OUTPUT_DIR=./experiments/${EXP_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=./experiments/${EXP_NAME}/log
 
 torchrun --nproc_per_node 4 --nnodes 1 --master_port 29501 scripts/train_score_librispeech_pho.py \
-    --num_hidden_layers 12 --diffloss_d 12 \
+    --num_hidden_layers 12 --diffloss_d 3 \
     --preprocessing_num_workers 8 \
     --dataloader_num_workers 8 \
     --dataloader_pin_memory True \
